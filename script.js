@@ -5,6 +5,12 @@ const dragArea = document.getElementById('dragArea');
 const outputImages = document.getElementById('outputImages');
 const uploadTitle = document.getElementById('uploadTitle');
 const uploadSubtitle = document.getElementById('uploadSubtitle');
+const settingsArea = document.getElementById('settingsArea');
+const borderRadiusInput = document.getElementById('borderRadius');
+const borderRadiusValue = document.getElementById('borderRadiusValue');
+const bgColorInput = document.getElementById('bgColor');
+const transparentBtn = document.getElementById('transparentBtn');
+let isTransparent = false;
 
 dragArea.addEventListener('dragover', (e) => {
   e.preventDefault();
@@ -16,82 +22,202 @@ dragArea.addEventListener('dragleave', (e) => {
   dragArea.style.backgroundColor = '';
 });
 
+let storedOriginalImage = null;
+
 dragArea.addEventListener('drop', (e) => {
   e.preventDefault();
   dragArea.style.backgroundColor = '';
   inputImage.files = e.dataTransfer.files;
-  resizeImage();
+  handleFileChange();
 });
 
 dragArea.addEventListener('click', (e) => {
   inputImage.click();
 });
 
-const resizeImage = () => {
-  // Created new zip file to avoid appending to the same zip file
-  zip = new JSZip();
-  outputImages.innerHTML = '';
+borderRadiusInput.addEventListener('input', (e) => {
+  borderRadiusValue.innerText = e.target.value;
+  if (storedOriginalImage) {
+    generateImages(storedOriginalImage);
+  }
+});
 
-  const downloadAllButton = document.getElementById('downloadAll');
-  const codeSnippet = document.getElementById('code-snippet');
-  downloadAllButton.classList.add('hidden');
-  codeSnippet.classList.add('hidden');
-  uploadTitle.innerHTML = 'Upload file';
-  uploadSubtitle.innerHTML = 'click or drag and drop your file here';
-  dragArea.classList.remove('small');
+bgColorInput.addEventListener('input', () => {
+  isTransparent = false;
+  if (storedOriginalImage) {
+    generateImages(storedOriginalImage);
+  }
+});
 
+transparentBtn.addEventListener('click', () => {
+  isTransparent = true;
+  if (storedOriginalImage) {
+    generateImages(storedOriginalImage);
+  }
+});
+
+const handleFileChange = () => {
   if (inputImage.files && inputImage.files[0]) {
-    uploadTitle.innerHTML = 'Click to change file';
-    uploadSubtitle.innerHTML = inputImage.files[0].name;
-    dragArea.classList.add('small');
-
     const reader = new FileReader();
     reader.onload = function (event) {
       const img = new Image();
       img.src = event.target.result;
-
       img.onload = function () {
-        const sizes = [128, 48, 32, 16];
-        sizes.forEach((size) => {
-          const resizedImage = document.createElement('canvas');
-          resizedImage.width = size;
-          resizedImage.height = size;
-
-          const ctx = resizedImage.getContext('2d');
-          ctx.drawImage(img, 0, 0, size, size);
-
-          const imageDataURL = resizedImage.toDataURL(inputImage.files[0].type);
-
-          const preview = document.createElement('img');
-          preview.src = imageDataURL;
-          preview.width = size;
-          preview.height = size;
-
-          const link = document.createElement('a');
-          link.classList.add('blue-button');
-          link.download = `icon${size}.${getFileExtension(
-            inputImage.files[0].type
-          )}`;
-          link.href = imageDataURL;
-          link.innerHTML = `Download ${size}x${size} px`;
-
-          const div = document.createElement('div');
-          div.appendChild(preview);
-          div.appendChild(link);
-          outputImages.appendChild(div);
-
-          zip.file(link.download, imageDataURL.split('base64,')[1], {
-            base64: true,
-          });
-        });
-
-        downloadAllButton.classList.remove('hidden');
-        codeSnippet.classList.remove('hidden');
-        downloadAllButton.disabled = false;
+        storedOriginalImage = img;
+        updateUIForUpload(inputImage.files[0].name);
+        generateImages(img);
       };
     };
     reader.readAsDataURL(inputImage.files[0]);
   }
+};
+
+
+
+const previewArea = document.getElementById('previewArea');
+const previewIcon = document.getElementById('previewIcon');
+const popupIcon = document.getElementById('popupIcon');
+const extensionPopup = document.getElementById('extensionPopup');
+
+previewIcon.addEventListener('click', (e) => {
+  e.stopPropagation();
+  extensionPopup.classList.toggle('hidden');
+});
+
+document.addEventListener('click', (e) => {
+  if (!extensionPopup.classList.contains('hidden') && !extensionPopup.contains(e.target) && e.target !== previewIcon) {
+    extensionPopup.classList.add('hidden');
+  }
+});
+
+const removeFile = () => {
+  inputImage.value = '';
+  outputImages.innerHTML = '';
+  uploadTitle.innerHTML = 'Upload file';
+  uploadSubtitle.innerHTML = 'click or drag and drop your file here';
+  dragArea.classList.remove('small');
+  settingsArea.classList.add('hidden');
+  previewArea.classList.add('hidden');
+  document.getElementById('downloadAll').classList.add('hidden');
+  document.getElementById('code-snippet').classList.add('hidden');
+  storedOriginalImage = null;
+  document.querySelector('link[rel="icon"][sizes="32x32"]').href = 'favicon/favicon-32x32.png';
+  document.querySelector('link[rel="icon"][sizes="16x16"]').href = 'favicon/favicon-16x16.png';
+};
+
+const updateUIForUpload = (fileName) => {
+  const downloadAllButton = document.getElementById('downloadAll');
+  const codeSnippet = document.getElementById('code-snippet');
+
+  uploadTitle.innerHTML = 'Click to change file';
+  uploadSubtitle.innerHTML = fileName;
+  dragArea.classList.add('small');
+  settingsArea.classList.remove('hidden');
+  previewArea.classList.remove('hidden'); // Show preview area
+  downloadAllButton.classList.add('hidden'); // Initially hide until generated
+  codeSnippet.classList.add('hidden');
+};
+
+const resizeImage = () => {
+  handleFileChange(); // For backward compatibility if HTML calls resizeImage()
+};
+
+const generateImages = (img) => {
+  const downloadAllButton = document.getElementById('downloadAll');
+  const codeSnippet = document.getElementById('code-snippet');
+
+  // Check if we can reuse existing elements to prevent scroll jumping
+  const existingDivs = outputImages.querySelectorAll('div');
+  const shouldReuse = existingDivs.length === 4; // We expect 4 sizes
+
+  if (!shouldReuse) {
+    outputImages.innerHTML = '';
+  }
+
+  zip = new JSZip();
+
+  const sizes = [128, 48, 32, 16];
+  const borderRadiusPercent = borderRadiusInput.value;
+
+  sizes.forEach((size, index) => {
+    const resizedImage = document.createElement('canvas');
+    resizedImage.width = size;
+    resizedImage.height = size;
+
+    const ctx = resizedImage.getContext('2d');
+
+    if (!isTransparent) {
+      ctx.fillStyle = bgColorInput.value;
+      ctx.fillRect(0, 0, size, size);
+    }
+
+    if (borderRadiusPercent > 0) {
+      const radius = (size * borderRadiusPercent) / 100;
+      ctx.beginPath();
+      ctx.moveTo(radius, 0);
+      ctx.lineTo(size - radius, 0);
+      ctx.quadraticCurveTo(size, 0, size, radius);
+      ctx.lineTo(size, size - radius);
+      ctx.quadraticCurveTo(size, size, size - radius, size);
+      ctx.lineTo(radius, size);
+      ctx.quadraticCurveTo(0, size, 0, size - radius);
+      ctx.lineTo(0, radius);
+      ctx.quadraticCurveTo(0, 0, radius, 0);
+      ctx.closePath();
+      ctx.clip();
+    }
+
+    ctx.drawImage(img, 0, 0, size, size);
+
+    const imageDataURL = resizedImage.toDataURL('image/png');
+
+    if (size === 16) {
+      previewIcon.src = imageDataURL;
+      popupIcon.src = imageDataURL;
+      document.querySelector('link[rel="icon"][sizes="16x16"]').href = imageDataURL;
+    }
+
+    if (size === 32) {
+      document.querySelector('link[rel="icon"][sizes="32x32"]').href = imageDataURL;
+    }
+
+    if (shouldReuse) {
+      const div = existingDivs[index];
+      if (div) {
+        const preview = div.querySelector('img');
+        const link = div.querySelector('a');
+
+        if (preview) preview.src = imageDataURL;
+        if (link) {
+          link.href = imageDataURL;
+        }
+      }
+    } else {
+      const preview = document.createElement('img');
+      preview.src = imageDataURL;
+      preview.width = size;
+      preview.height = size;
+
+      const link = document.createElement('a');
+      link.classList.add('blue-button');
+      link.download = `icon${size}.png`;
+      link.href = imageDataURL;
+      link.innerHTML = `Download ${size}x${size} px`;
+
+      const div = document.createElement('div');
+      div.appendChild(preview);
+      div.appendChild(link);
+      outputImages.appendChild(div);
+    }
+
+    zip.file(`icon${size}.png`, imageDataURL.split('base64,')[1], {
+      base64: true,
+    });
+  });
+
+  downloadAllButton.classList.remove('hidden');
+  codeSnippet.classList.remove('hidden');
+  downloadAllButton.disabled = false;
 };
 
 const getFileExtension = (mimeType) => {
